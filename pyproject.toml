@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meltmarketexchange"
+version = "0.1.0"
+description = "AI-assisted trading assistant: Kraken market analysis, signals, and a morning briefing of the day's plays."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []  # runtime is pure standard library
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+melt = "melt.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+melt = ["data/*.json"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
