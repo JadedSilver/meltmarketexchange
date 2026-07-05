@@ -4,6 +4,7 @@ Commands:
   melt morning [--watchlist BTC,ETH,...]   Live Kraken briefing of today's plays
   melt scan SYMBOL                         Deep-dive one instrument (live)
   melt demo                                Offline briefing on bundled real data
+  melt backtest [SYMBOL] [--offline]       Walk-forward backtest of the strategy
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import argparse
 import sys
 from typing import List
 
-from . import kraken
+from . import backtest, kraken
 from .briefing import DEFAULT_WATCHLIST, format_briefing, scan
 from .signals import analyze
 
@@ -48,6 +49,22 @@ def cmd_demo(_args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_backtest(args: argparse.Namespace) -> int:
+    symbol = args.symbol.upper()
+    if args.offline:
+        if symbol != "BTC":
+            print("Offline backtesting only bundles BTC history; use live mode for others.")
+            return 1
+        print("Backtesting on bundled real BTC/USD daily history (offline).\n")
+        candles = kraken.load_snapshot("btc_history")
+    else:
+        print(f"Fetching live Kraken history for {symbol}...\n")
+        candles = kraken.fetch_ohlc(symbol, args.interval)
+    result = backtest.run(symbol, candles, fee=args.fee)
+    print(backtest.format_report(result))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="melt", description="Melt Market Exchange trading assistant")
     sub = p.add_subparsers(dest="command", required=True)
@@ -64,6 +81,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     d = sub.add_parser("demo", help="Offline briefing on bundled real data")
     d.set_defaults(func=cmd_demo)
+
+    b = sub.add_parser("backtest", help="Walk-forward backtest of the signal strategy")
+    b.add_argument("symbol", nargs="?", default="BTC")
+    b.add_argument("--interval", default="1d", help="Candle interval (default 1d)")
+    b.add_argument("--offline", action="store_true",
+                   help="Use bundled real BTC history instead of live Kraken data")
+    b.add_argument("--fee", type=float, default=backtest.DEFAULT_FEE,
+                   help="Per-side fee fraction (default 0.0026 = Kraken taker)")
+    b.set_defaults(func=cmd_backtest)
     return p
 
 

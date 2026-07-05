@@ -34,11 +34,14 @@ src/melt/
   signals.py              Weighted rule engine -> Signal (action/confidence/risk)
   kraken.py               Kraken public OHLC feed + offline snapshot loader
   briefing.py             Watchlist scan + morning-briefing text formatting
-  cli.py                  argparse entry point: morning / scan / demo
+  backtest.py             Walk-forward backtester (no look-ahead, fees, gap fills)
+  cli.py                  argparse entry point: morning / scan / demo / backtest
   data/btc_snapshot.json  Real BTC/USD daily snapshot for offline demo & tests
+  data/btc_history.json   Real BTC/USD 1-year daily history for offline backtests
 tests/
   test_indicators.py      Indicator math
   test_signals.py         Signal engine + snapshot
+  test_backtest.py        Backtest engine mechanics + real-history run
 ```
 
 ## Architecture notes
@@ -69,6 +72,9 @@ python -m melt.cli demo        # or: melt demo
 # Live morning briefing (needs outbound access to api.kraken.com)
 melt morning --watchlist BTC,ETH,SOL --interval 1d
 
+# Backtest on bundled real 1-year BTC history (offline)
+python -m melt.cli backtest --offline
+
 # Tests
 pytest -q
 ```
@@ -85,6 +91,10 @@ there; live commands need real network access.
   `None` on insufficient data.
 - New signal inputs go through `signals.WEIGHTS` so scoring stays transparent and
   the weights sum to a sane range.
+- Judge any strategy/weight change with `melt backtest --offline` and report the
+  before/after numbers; never claim improvement without them. The backtester must
+  stay look-ahead-free: decisions use only `candles[:i+1]`, fills happen at the
+  next bar, gapped stops/targets fill at the worse price.
 - Any change touching order placement / real money must default to paper trading
   and be gated behind an explicit opt-in. Do not add live-trading code silently.
 - Update this file and `README.md` in the same change when you alter structure,
@@ -101,8 +111,8 @@ there; live commands need real network access.
 
 ## Roadmap (keep current as items land)
 
+- [x] Backtesting harness to validate strategies on history
 - [ ] Stocks data feed (alongside Kraken crypto)
-- [ ] Backtesting harness to validate strategies on history
 - [ ] Live order execution via Kraken private API (opt-in, paper-first)
 - [ ] Position sizing / portfolio risk model
 - [ ] Config file for watchlist, weights, and thresholds

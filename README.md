@@ -19,9 +19,10 @@ v0.1 — **read-only analysis** (no live order execution yet).
 - ✅ Signal engine: transparent weighted rules → BUY/SELL/HOLD + confidence + ATR-based risk levels
 - ✅ Morning briefing over a watchlist (crypto majors by default)
 - ✅ Offline `demo` on a bundled real BTC/USD snapshot
+- ✅ Backtesting harness: walk-forward, no look-ahead, fees + gap-aware fills,
+  benchmarked against buy & hold (bundled real 1-year BTC history for offline runs)
 - ⏳ Stocks feed (planned)
 - ⏳ Live order execution via Kraken private API (planned, opt-in)
-- ⏳ Backtesting harness (planned)
 
 ## Install
 
@@ -45,7 +46,17 @@ melt morning --watchlist BTC,ETH,SOL,LINK --interval 4h
 
 # Deep-dive a single symbol
 melt scan ETH
+
+# Backtest the strategy on a year of bundled real BTC history (offline)
+melt backtest --offline
+
+# Backtest any symbol on live Kraken history
+melt backtest ETH --interval 4h
 ```
+
+Backtests charge 0.26%/side fees (Kraken taker) by default and report win
+rate, profit factor, max drawdown, and a buy-and-hold benchmark. Judge every
+strategy change against `melt backtest` before trusting it with money.
 
 Example (`melt demo`):
 
