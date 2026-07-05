@@ -2,70 +2,116 @@
 
 Guidance for AI assistants (and humans) working in this repository.
 
-## Current state of the repository
+## What this project is
 
-**This repository is a fresh scaffold. As of this writing it contains no application code.**
+**meltmarketexchange** is an AI-assisted trading assistant. It fetches market
+data from **Kraken**, computes technical indicators, and produces a **morning
+briefing** of the day's plays: ranked BUY / SELL / HOLD signals with confidence,
+entry/stop/target levels, and a plain-English rationale.
 
-The entire tracked contents are:
+It is **decision support, not financial advice**, and it is **read-only** today
+(v0.1) — no live order execution. Keep it that way until an execution layer is
+explicitly, deliberately added with paper-trading defaults and safeguards.
 
-- `README.md` — a single-line title (`# meltmarketexchange`)
-- `CLAUDE.md` — this file
+## Language & tooling
 
-There is no build system, no dependency manifest (`package.json`, `pyproject.toml`, `go.mod`, `Cargo.toml`, etc.), no source directory, no tests, and no CI configuration yet. Do **not** assume a language, framework, or architecture — none has been chosen and committed.
+- **Language:** Python (>= 3.10)
+- **Runtime dependencies:** none — pure standard library (keep it that way unless
+  there's a strong reason; surface any new dependency before adding it)
+- **Dev dependency:** `pytest`
+- **Packaging:** `pyproject.toml` (setuptools, `src/` layout), console script `melt`
 
-> When real code lands, update this file to describe the actual structure, commands, and conventions. Until then, keep the "future conventions" section below as a living checklist rather than treating it as established fact.
+## Repository layout
 
-## What "meltmarketexchange" appears to be
+```
+pyproject.toml            Packaging, console script, pytest config
+README.md                 User-facing overview and usage
+CLAUDE.md                 This file
+src/melt/
+  __init__.py             Package metadata / docstring
+  models.py               Candle and Signal dataclasses (shared types)
+  indicators.py           SMA, EMA, RSI, MACD, ROC, ATR (pure-Python math)
+  signals.py              Weighted rule engine -> Signal (action/confidence/risk)
+  kraken.py               Kraken public OHLC feed + offline snapshot loader
+  briefing.py             Watchlist scan + morning-briefing text formatting
+  cli.py                  argparse entry point: morning / scan / demo
+  data/btc_snapshot.json  Real BTC/USD daily snapshot for offline demo & tests
+tests/
+  test_indicators.py      Indicator math
+  test_signals.py         Signal engine + snapshot
+```
 
-The repository name suggests a market/exchange application (likely trading or crypto-adjacent). Treat this as an inference, not a specification — confirm the intended scope with the maintainer before making architectural decisions on that basis.
+## Architecture notes
 
-## Git workflow
-
-- **Default branch:** `main`
-- **Do not commit directly to `main`.** Develop on a feature branch and open a pull request.
-- Push with `git push -u origin <branch-name>`.
-- After pushing, open a **draft** pull request if no open PR already exists for the branch.
-- Write clear, descriptive commit messages that explain the *why*, not just the *what*.
-
-There is no PR template in the repo yet. If you add one, place it at `.github/pull_request_template.md`.
-
-## Working in an empty repository
-
-When asked to add features to this repo, remember there is no existing scaffolding to build on. Before writing code:
-
-1. Confirm the target language/framework and package manager with the maintainer if it isn't stated in the request.
-2. Establish the project skeleton (dependency manifest, source layout, formatter/linter config, test runner) as part of the first substantive change.
-3. Add the corresponding commands to the **Development commands** section below so future sessions can build, test, and run without rediscovery.
-
-Avoid introducing tooling, frameworks, or large dependencies unilaterally — surface the choice first when it is consequential.
+- **Data flow:** `kraken.fetch_ohlc()` → `List[Candle]` → `signals.analyze()` →
+  `Signal` → `briefing.format_briefing()` → text. The feed is the only I/O
+  boundary; everything downstream is pure and easily testable.
+- **Signal engine is intentionally transparent.** `signals.WEIGHTS` maps each
+  check (trend / MACD / RSI / momentum) to a contribution; the summed score maps
+  to BUY/SELL/HOLD via `BUY_THRESHOLD` / `SELL_THRESHOLD`. No black box — every
+  play must be explainable and back-testable. Tune weights/thresholds here.
+- **Risk levels come from ATR** (`ATR_STOP_MULT`, `REWARD_MULT`), so stops adapt
+  to volatility rather than being fixed percentages.
+- **Indicators return `None`** when there isn't enough history; `analyze()` and
+  the briefing degrade gracefully rather than crash. Preserve that.
+- **Symbols** are friendly tickers (`BTC`, `ETH`); `kraken.PAIR_ALIASES` maps them
+  to Kraken pair names (`XBTUSD`, ...). Extend the alias table for new markets.
 
 ## Development commands
 
-_None yet — no build tooling exists._ Populate this section as soon as a build/test/run setup is committed. Suggested shape:
+```bash
+# Install (editable) with dev tools
+pip install -e ".[dev]"
 
+# Run the offline demo on bundled real data (no network needed)
+python -m melt.cli demo        # or: melt demo
+
+# Live morning briefing (needs outbound access to api.kraken.com)
+melt morning --watchlist BTC,ETH,SOL --interval 1d
+
+# Tests
+pytest -q
 ```
-# Install dependencies
-# Run the app locally
-# Run tests
-# Lint / format
-```
 
-## Future conventions (to fill in as the project grows)
+Note: sandboxed CI/agent environments may block outbound HTTPS to
+`api.kraken.com`. Use `melt demo` and the tests (both offline) to verify logic
+there; live commands need real network access.
 
-Keep this checklist current. Convert each item from "planned" to "documented" once it actually exists in the repo:
+## Conventions
 
-- [ ] Language & runtime version
-- [ ] Package manager & dependency manifest
-- [ ] Source directory layout
-- [ ] Build command
-- [ ] Test framework & how to run the suite
-- [ ] Linter / formatter and their config
-- [ ] CI pipeline (e.g. `.github/workflows/`)
-- [ ] Environment variables / secrets handling
-- [ ] Deployment process
+- Keep the runtime dependency-free where practical.
+- New indicators go in `indicators.py` with a matching test in
+  `tests/test_indicators.py`; keep signatures `(values, period)`-style and return
+  `None` on insufficient data.
+- New signal inputs go through `signals.WEIGHTS` so scoring stays transparent and
+  the weights sum to a sane range.
+- Any change touching order placement / real money must default to paper trading
+  and be gated behind an explicit opt-in. Do not add live-trading code silently.
+- Update this file and `README.md` in the same change when you alter structure,
+  commands, or conventions.
+
+## Git workflow
+
+- **Default branch:** `main`. Do not commit directly to `main`.
+- Develop on a feature branch; push with `git push -u origin <branch-name>`.
+- After pushing, open a **draft** PR if no open PR already exists for the branch.
+- Write commit messages that explain the *why*, not just the *what*.
+- There is no PR template yet; if you add one, place it at
+  `.github/pull_request_template.md`.
+
+## Roadmap (keep current as items land)
+
+- [ ] Stocks data feed (alongside Kraken crypto)
+- [ ] Backtesting harness to validate strategies on history
+- [ ] Live order execution via Kraken private API (opt-in, paper-first)
+- [ ] Position sizing / portfolio risk model
+- [ ] Config file for watchlist, weights, and thresholds
+- [ ] CI pipeline (`.github/workflows/`) running `pytest`
 
 ## Notes for AI assistants
 
-- Verify claims against the working tree before stating them — this file describes an empty repo, and that will change.
-- Do not fabricate file paths, modules, or commands that don't exist.
-- When you establish a new convention (directory layout, test command, lint rule), record it here in the same change so it isn't lost.
+- Verify claims against the working tree before stating them.
+- Do not fabricate market data. The bundled snapshot is real historical data;
+  keep it that way, and label any synthetic fixtures clearly as synthetic.
+- Do not overpromise predictive power. Frame output as probabilistic decision
+  support with explicit risk, never guaranteed returns.
